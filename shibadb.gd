@@ -25,27 +25,28 @@ func init_shibadb(key: String):
 	is_init = true
 	
 func _handle_fetch_complete(args: Array) -> void:
-	sdb_log("HANDLING FETCH RESPONSE")
+	sdb_log("Handling fetch response...")
 	var res = args[0]
 	var code = args[1]
 	var headers_str = args[2]
 	var body_str = args[3]
 	var headers = PackedStringArray()
 	
-	if headers_str:
-		headers = PackedStringArray(
-			headers_str
-			.split("\n")
-			.filter(
-				func(h):
-					return h.strip_edges() != ""
-					)
-				)
-				
-	var parse_result = JSON.parse_string(body_str)
 	sdb_log("Res: " + str(res))
 	sdb_log("Code: " + str(code))
+	
+	if headers_str:
+		var header_lines = headers_str.split("\n")
+		var filtered_headers = []
+		for h in header_lines:
+			if h.strip_edges() != "":
+				filtered_headers.append(h)
+		headers = PackedStringArray(filtered_headers)
+				
 	sdb_log("Headers: " + str(headers))
+	
+	var parse_result = JSON.parse_string(body_str)
+	
 	sdb_log("Body: " + str(parse_result))
 	sdb_log("EMITTING API RESPONSE SIGNAL")
 	api_response.emit(res, code, headers, parse_result)
@@ -73,22 +74,64 @@ func save_progress(values: Dictionary[String, Variant]) -> void:
         body: '%s'
     })
     .then(function(response) {
-        var headers = "";
+		var headers = "";
         response.headers.forEach(function(value, key) {
-            headers += key + ":" + value + "\\n"
+			headers += key + ":" + value + "\\n"
         });
         return [response.status, headers, response]
     })
     .then(function([status, headers_str, response]) {
         if (!response.ok) {
-            throw new Error("HTTP " + status)
+			throw new Error("HTTP " + status)
         }
         return response.text().then(function(text) {
             window.%s(0, status, headers_str, text)
         })
     })
     .catch(function(error) {
-        window.%s(1, 0, "", "Error: " + error.message)
+		window.%s(1, 0, "", "Error: " + error.message)
+    })
+	""" % [API_BASE + "/games/" + api_key + "/data", payload, callback_name, callback_name]
+	JavaScriptBridge.eval(js_payload, true)
+
+func reset_progress(save_name: String) -> void:
+	if OS.get_name() != "Web":
+		sdb_log("Dynamically resetting progress is not supported on this platform!")
+		return
+	var payload = "{\"saveName\": \"" + save_name + "\"}"
+	sdb_log(payload)
+	var callable = Callable(self, "_handle_fetch_complete")
+	var callback = JavaScriptBridge.create_callback(callable)
+	var callback_name = "godot_shibadb_callback_delete_" + str(Time.get_ticks_msec())
+	active_callbacks[callback_name] = callback
+	var window = JavaScriptBridge.get_interface("window")
+	window[callback_name] = callback
+	var js_payload = """
+    fetch('%s', {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: '%s'
+    })
+    .then(function(response) {
+		var headers = "";
+        response.headers.forEach(function(value, key) {
+			headers += key + ":" + value + "\\n"
+        });
+        return [response.status, headers, response]
+    })
+    .then(function([status, headers_str, response]) {
+        if (!response.ok) {
+			throw new Error("HTTP " + status)
+        }
+        return response.text().then(function(text) {
+            window.%s(0, status, headers_str, text)
+        })
+    })
+    .catch(function(error) {
+		window.%s(1, 0, "", "Error: " + error.message)
     })
 	""" % [API_BASE + "/games/" + api_key + "/data", payload, callback_name, callback_name]
 	JavaScriptBridge.eval(js_payload, true)
@@ -102,7 +145,7 @@ func save_progress_with_cookie(values: Dictionary[String, Variant], cookie: Stri
 
 func load_progress():
 	if OS.get_name() != "Web":
-		sdb_log("Dynamically saving progress is not supported on this platform!")
+		sdb_log("Dynamically loading progress is not supported on this platform!")
 		return
 	var callable = Callable(self, "_handle_fetch_complete")
 	var callback = JavaScriptBridge.create_callback(callable)
@@ -116,22 +159,22 @@ func load_progress():
         credentials: 'include'
     })
     .then(function(response) {
-        var headers = "";
+		var headers = "";
         response.headers.forEach(function(value, key) {
-            headers += key + ":" + value + "\\n"
+			headers += key + ":" + value + "\\n"
         });
         return [response.status, headers, response]
     })
     .then(function([status, headers_str, response]) {
         if (!response.ok) {
-            throw new Error("HTTP " + status)
+			throw new Error("HTTP " + status)
         }
         return response.text().then(function(text) {
             window.%s(0, status, headers_str, text)
         })
     })
     .catch(function(error) {
-        window.%s(1, 0, "", "Error: " + error.message)
+		window.%s(1, 0, "", "Error: " + error.message)
     })
 	""" % [API_BASE + "/games/" + api_key + "/data", callback_name, callback_name]
 	JavaScriptBridge.eval(js_payload, true)
